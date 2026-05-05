@@ -9,116 +9,17 @@ import io
 
 st.set_page_config(page_title="House Price Predictor", page_icon="🏠", layout="wide")
 
-# ── Required columns ──────────────────────────────────────────────────────────
-REQUIRED_COLUMNS = {
-    "Id": "Unique identifier for each house",
-    "MSSubClass": "Type of dwelling (e.g. 20 = 1-story 1946+)",
-    "MSZoning": "General zoning classification (e.g. RL = Residential Low Density)",
-    "LotFrontage": "Linear feet of street connected to property",
-    "LotArea": "Lot size in square feet",
-    "Street": "Type of road access (Grvl / Pave)",
-    "LotShape": "General shape of property",
-    "LandContour": "Flatness of the property",
-    "Neighborhood": "Physical location within Ames city limits",
-    "BldgType": "Type of dwelling (1Fam / 2FmCon / Duplex etc.)",
-    "HouseStyle": "Style of dwelling (1Story / 2Story etc.)",
-    "OverallQual": "Overall material and finish quality (1–10)",
-    "OverallCond": "Overall condition rating (1–10)",
-    "YearBuilt": "Original construction year",
-    "YearRemodAdd": "Remodel year",
-    "RoofStyle": "Type of roof",
-    "Exterior1st": "Exterior covering on house",
-    "MasVnrType": "Masonry veneer type",
-    "MasVnrArea": "Masonry veneer area in square feet",
-    "ExterQual": "Exterior material quality (Ex/Gd/TA/Fa/Po)",
-    "Foundation": "Type of foundation",
-    "BsmtQual": "Height of basement",
-    "BsmtFinSF1": "Type 1 finished square feet",
-    "TotalBsmtSF": "Total square feet of basement area",
-    "CentralAir": "Central air conditioning (Y / N)",
-    "1stFlrSF": "First floor square feet",
-    "2ndFlrSF": "Second floor square feet",
-    "GrLivArea": "Above grade living area square feet",
-    "FullBath": "Full bathrooms above grade",
-    "HalfBath": "Half bathrooms above grade",
-    "BedroomAbvGr": "Number of bedrooms above basement level",
-    "KitchenQual": "Kitchen quality",
-    "TotRmsAbvGrd": "Total rooms above grade",
-    "Fireplaces": "Number of fireplaces",
-    "FireplaceQu": "Fireplace quality (leave blank if none)",
-    "GarageType": "Garage location",
-    "GarageYrBlt": "Year garage was built",
-    "GarageCars": "Size of garage in car capacity",
-    "GarageArea": "Size of garage in square feet",
-    "WoodDeckSF": "Wood deck area in square feet",
-    "OpenPorchSF": "Open porch area in square feet",
-    "MoSold": "Month sold",
-    "YrSold": "Year sold",
-    "SaleType": "Type of sale",
-    "SaleCondition": "Condition of sale",
-    "SalePrice": "⭐ TARGET — price to predict (training file only)",
-}
-
-NUMERIC_COLS = [
-    "LotFrontage", "LotArea", "MasVnrArea", "BsmtFinSF1", "TotalBsmtSF",
-    "1stFlrSF", "2ndFlrSF", "GrLivArea", "GarageArea", "WoodDeckSF",
-    "OpenPorchSF", "MoSold", "YrSold", "YearBuilt", "YearRemodAdd",
-    "OverallQual", "OverallCond", "GarageCars", "FullBath", "HalfBath",
-    "BedroomAbvGr", "TotRmsAbvGrd", "Fireplaces", "GarageYrBlt",
-    "MSSubClass", "SalePrice"
-]
-
-# ── Data validation ───────────────────────────────────────────────────────────
-def validate_dataframe(df: pd.DataFrame, is_train: bool = True) -> list:
-    errors = []
-
-    # Check required columns
-    required = list(REQUIRED_COLUMNS.keys())
-    if not is_train:
-        required = [c for c in required if c != "SalePrice"]
-
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        errors.append(f"Missing columns: {', '.join(missing)}")
-
-    # Check SalePrice for training
-    if is_train and "SalePrice" in df.columns:
-        if not pd.to_numeric(df["SalePrice"], errors="coerce").notna().all():
-            errors.append("SalePrice column contains non-numeric values — it must be numbers only.")
-
-    # Check for completely empty dataframe
-    if df.empty:
-        errors.append("The uploaded file is empty.")
-
-    # Check numeric columns that should not be text
-    for col in NUMERIC_COLS:
-        if col in df.columns and col != "SalePrice":
-            numeric_check = pd.to_numeric(df[col], errors="coerce")
-            bad_pct = numeric_check.isna().mean()
-            if bad_pct > 0.5:
-                errors.append(f"Column '{col}' should be numeric but contains mostly text values.")
-
-    return errors
-
-
 # ── Preprocessing ─────────────────────────────────────────────────────────────
 def preprocess(df: pd.DataFrame, train_columns=None) -> pd.DataFrame:
     df = df.copy()
-
-    # Drop high-null columns
     drop_cols = ["PoolQC", "MiscFeature", "Alley", "Fence"]
     df.drop(columns=[c for c in drop_cols if c in df.columns], inplace=True)
-
-    # Special fills
     if "FireplaceQu" in df.columns:
         df["FireplaceQu"] = df["FireplaceQu"].fillna("None")
     if "LotFrontage" in df.columns:
         df["LotFrontage"] = pd.to_numeric(df["LotFrontage"], errors="coerce")
         df["LotFrontage"] = df["LotFrontage"].fillna(df["LotFrontage"].median())
-
-    # Separate numeric and categorical columns explicitly
-    numeric_cols = []
-    cat_cols = []
+    numeric_cols, cat_cols = [], []
     for col in df.columns:
         converted = pd.to_numeric(df[col], errors="coerce")
         if converted.notna().sum() >= len(df) * 0.5:
@@ -127,148 +28,272 @@ def preprocess(df: pd.DataFrame, train_columns=None) -> pd.DataFrame:
         else:
             df[col] = df[col].astype(str)
             cat_cols.append(col)
-
-    # Fill nulls
     for col in numeric_cols:
         df[col] = df[col].fillna(df[col].median())
     for col in cat_cols:
         df[col] = df[col].fillna("Unknown")
-
-    # One-hot encode
     if cat_cols:
         df = pd.get_dummies(df, columns=cat_cols)
-
-    # Bool → int
-    bool_cols = df.select_dtypes(include="bool").columns.tolist()
-    for col in bool_cols:
+    for col in df.select_dtypes(include="bool").columns:
         df[col] = df[col].astype(int)
-
-    # Align with training columns
     if train_columns is not None:
         df = df.reindex(columns=train_columns, fill_value=0)
-
-    # Force everything to float
     df = df.astype(float)
-
     return df
 
 
-# ── Model training ────────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner="Training model …")
+@st.cache_resource(show_spinner="Training model on Kaggle dataset …")
 def train_model(train_bytes: bytes):
     df = pd.read_csv(io.BytesIO(train_bytes))
     y = df["SalePrice"].astype(float)
     X = df.drop(columns=["SalePrice", "Id"], errors="ignore")
     X = preprocess(X)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
     model.fit(X_train, y_train)
-
     preds = model.predict(X_test)
     mae = mean_absolute_error(y_test, preds)
     r2 = r2_score(y_test, preds)
-
     return model, X_train.columns.tolist(), X_test, y_test, preds, mae, r2
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.title("🏠 House Price AI")
-    st.markdown("Upload a **training CSV** (must contain `SalePrice`) to train the model.")
-    train_file = st.file_uploader("Training CSV", type="csv", key="train")
+    st.markdown("Optionally upload your own `train.csv` to retrain the model.")
+    train_file = st.file_uploader("Training CSV (optional)", type="csv", key="train")
     if train_file:
-        st.success("Training file ready ✔")
+        st.success("Custom training file ready ✔")
     st.markdown("---")
     st.markdown("### How it works")
-    st.markdown("1. Upload `train.csv`\n2. Model trains automatically\n3. Explore metrics & charts\n4. Upload `test.csv` for batch predictions\n5. Download `submission.csv`")
+    st.markdown("1. Adjust house features in the form\n2. Click **Predict Price**\n3. Get instant estimate\n4. Optionally upload CSV for batch predictions")
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("🏠 House Sale Price Predictor")
-st.markdown("A **Random Forest** model trained on the Kaggle House Prices dataset.")
+st.markdown("Fill in the house details below and get an **instant price estimate**.")
 
-# ── Required columns expander ─────────────────────────────────────────────────
-with st.expander("📋 Required CSV Columns — click to expand", expanded=False):
-    st.markdown("Your CSV must contain these columns. ⭐ = only needed in the **training** file.")
-    st.warning("⚠️ Only use clean datasets from the [Kaggle House Prices competition](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data). Custom or modified CSVs may cause errors.")
-    col_a, col_b = st.columns(2)
-    items = list(REQUIRED_COLUMNS.items())
-    half = len(items) // 2
-    with col_a:
-        for col, desc in items[:half]:
-            st.markdown(f"**`{col}`** — {desc}")
-    with col_b:
-        for col, desc in items[half:]:
-            st.markdown(f"**`{col}`** — {desc}")
+# ── Load default training data ────────────────────────────────────────────────
+DEFAULT_TRAIN_URL = "https://raw.githubusercontent.com/dsrscientist/dataset1/master/house_prices_train.csv"
 
-st.markdown("---")
+if train_file:
+    train_bytes = train_file.read()
+else:
+    try:
+        import requests
+        r = requests.get(DEFAULT_TRAIN_URL, timeout=10)
+        train_bytes = r.content
+    except Exception:
+        st.warning("⚠️ Could not load default training data. Please upload a `train.csv` in the sidebar.")
+        train_bytes = None
 
-if not train_file:
-    st.info("👈  Upload `train.csv` in the sidebar to begin.")
+if train_bytes is None:
     st.stop()
 
-# ── Validate training file ────────────────────────────────────────────────────
-train_bytes = train_file.read()
-train_df_check = pd.read_csv(io.BytesIO(train_bytes))
-validation_errors = validate_dataframe(train_df_check, is_train=True)
-
-if validation_errors:
-    st.error("❌ Your dataset has the following issues. Please upload a clean dataset:")
-    for err in validation_errors:
-        st.markdown(f"- {err}")
-    st.info("💡 Download the correct dataset from [Kaggle House Prices](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data)")
-    st.stop()
-
-# ── Train model ───────────────────────────────────────────────────────────────
 try:
     model, train_cols, X_test, y_test, preds, mae, r2 = train_model(train_bytes)
 except Exception as e:
-    st.error("❌ Could not train the model. Your dataset may be corrupted or incorrectly formatted.")
-    st.markdown("**Please make sure you are using the official Kaggle House Prices `train.csv` file.**")
-    st.info("💡 Download it from [Kaggle House Prices](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data)")
+    st.error("❌ Could not train the model. Please upload a valid Kaggle House Prices `train.csv`.")
     st.stop()
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
 col1, col2, col3 = st.columns(3)
-col1.metric("Mean Absolute Error", f"${mae:,.0f}")
+col1.metric("Model MAE", f"${mae:,.0f}")
 col2.metric("R² Accuracy", f"{r2 * 100:.2f}%")
-col3.metric("Features used", len(train_cols))
+col3.metric("Features", len(train_cols))
 
 st.markdown("---")
 
-# ── Tabs ──────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3 = st.tabs(["📊 Model Performance", "🔍 Feature Importance", "📂 Batch Predict"])
+# ── Manual input form ─────────────────────────────────────────────────────────
+st.subheader("🏡 Enter House Details")
+st.markdown("Adjust the values below — all fields have smart defaults you can change.")
 
-with tab1:
-    st.subheader("Actual vs Predicted Sale Price")
+with st.form("house_form"):
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.markdown("#### 📐 Size & Layout")
+        gr_liv_area    = st.number_input("Above Ground Living Area (sq ft)", 500, 6000, 1500, step=50)
+        total_bsmt_sf  = st.number_input("Total Basement Area (sq ft)", 0, 3000, 800, step=50)
+        first_flr_sf   = st.number_input("1st Floor Area (sq ft)", 300, 4000, 1000, step=50)
+        second_flr_sf  = st.number_input("2nd Floor Area (sq ft)", 0, 2000, 0, step=50)
+        lot_area       = st.number_input("Lot Area (sq ft)", 1000, 100000, 8000, step=500)
+        lot_frontage   = st.number_input("Lot Frontage (linear ft)", 0, 300, 70, step=5)
+        garage_area    = st.number_input("Garage Area (sq ft)", 0, 1500, 400, step=50)
+        wood_deck_sf   = st.number_input("Wood Deck Area (sq ft)", 0, 1000, 0, step=25)
+        open_porch_sf  = st.number_input("Open Porch Area (sq ft)", 0, 600, 0, step=10)
+
+    with c2:
+        st.markdown("#### 🌟 Quality & Condition")
+        overall_qual  = st.slider("Overall Quality (1–10)", 1, 10, 6)
+        overall_cond  = st.slider("Overall Condition (1–10)", 1, 10, 5)
+        exter_qual    = st.selectbox("Exterior Quality", ["Ex", "Gd", "TA", "Fa", "Po"], index=2)
+        kitchen_qual  = st.selectbox("Kitchen Quality", ["Ex", "Gd", "TA", "Fa", "Po"], index=1)
+        bsmt_qual     = st.selectbox("Basement Quality", ["Ex", "Gd", "TA", "Fa", "Po", "NA"], index=1)
+        heating_qc    = st.selectbox("Heating Quality", ["Ex", "Gd", "TA", "Fa", "Po"], index=0)
+        fireplace_qu  = st.selectbox("Fireplace Quality", ["None", "Ex", "Gd", "TA", "Fa", "Po"], index=0)
+        garage_finish = st.selectbox("Garage Finish", ["Fin", "RFn", "Unf", "NA"], index=0)
+        garage_qual   = st.selectbox("Garage Quality", ["Ex", "Gd", "TA", "Fa", "Po", "NA"], index=2)
+
+    with c3:
+        st.markdown("#### 🏗️ Structure & Features")
+        year_built    = st.number_input("Year Built", 1870, 2025, 1995)
+        year_remod    = st.number_input("Year Remodelled", 1870, 2025, 1995)
+        full_bath     = st.selectbox("Full Bathrooms", [0, 1, 2, 3, 4], index=2)
+        half_bath     = st.selectbox("Half Bathrooms", [0, 1, 2], index=0)
+        bedroom       = st.selectbox("Bedrooms Above Ground", [0,1,2,3,4,5,6], index=3)
+        tot_rms       = st.selectbox("Total Rooms Above Ground", [2,3,4,5,6,7,8,9,10,11,12], index=5)
+        fireplaces    = st.selectbox("Fireplaces", [0, 1, 2, 3], index=0)
+        garage_cars   = st.selectbox("Garage Capacity (cars)", [0, 1, 2, 3, 4], index=2)
+        central_air   = st.selectbox("Central Air Conditioning", ["Y", "N"], index=0)
+
+    st.markdown("#### 🏘️ Location & Type")
+    lc1, lc2, lc3, lc4 = st.columns(4)
+    with lc1:
+        neighborhood = st.selectbox("Neighborhood", [
+            "NAmes","CollgCr","OldTown","Edwards","Somerst","NridgHt","Gilbert",
+            "Sawyer","NWAmes","SawyerW","BrkSide","Crawfor","Mitchel","NoRidge",
+            "Timber","IDOTRR","ClearCr","StoneBr","SWISU","Blmngtn","MeadowV",
+            "Veenker","NPkVill","Blueste","BrDale","Greens","GrnHill","Landmrk"
+        ], index=0)
+        ms_zoning = st.selectbox("Zoning", ["RL","RM","FV","RH","C (all)"], index=0)
+    with lc2:
+        bldg_type   = st.selectbox("Building Type", ["1Fam","2fmCon","Duplex","TwnhsE","Twnhs"], index=0)
+        house_style = st.selectbox("House Style", ["1Story","2Story","1.5Fin","1.5Unf","SFoyer","SLvl","2.5Unf","2.5Fin"], index=0)
+    with lc3:
+        foundation  = st.selectbox("Foundation", ["PConc","CBlock","BrkTil","Wood","Slab","Stone"], index=0)
+        roof_style  = st.selectbox("Roof Style", ["Gable","Hip","Flat","Gambrel","Mansard","Shed"], index=0)
+    with lc4:
+        sale_type   = st.selectbox("Sale Type", ["WD","New","COD","Con","ConLw","ConLI","ConLD","Oth","CWD"], index=0)
+        sale_cond   = st.selectbox("Sale Condition", ["Normal","Abnorml","Partial","AdjLand","Alloca","Family"], index=0)
+
+    submitted = st.form_submit_button("🔮 Predict Price", use_container_width=True)
+
+# ── Prediction ────────────────────────────────────────────────────────────────
+if submitted:
+    input_data = {
+        "MSSubClass": 20,
+        "MSZoning": ms_zoning,
+        "LotFrontage": lot_frontage,
+        "LotArea": lot_area,
+        "Street": "Pave",
+        "LotShape": "Reg",
+        "LandContour": "Lvl",
+        "Utilities": "AllPub",
+        "LotConfig": "Inside",
+        "LandSlope": "Gtl",
+        "Neighborhood": neighborhood,
+        "Condition1": "Norm",
+        "Condition2": "Norm",
+        "BldgType": bldg_type,
+        "HouseStyle": house_style,
+        "OverallQual": overall_qual,
+        "OverallCond": overall_cond,
+        "YearBuilt": year_built,
+        "YearRemodAdd": year_remod,
+        "RoofStyle": roof_style,
+        "RoofMatl": "CompShg",
+        "Exterior1st": "VinylSd",
+        "Exterior2nd": "VinylSd",
+        "MasVnrType": "None",
+        "MasVnrArea": 0,
+        "ExterQual": exter_qual,
+        "ExterCond": "TA",
+        "Foundation": foundation,
+        "BsmtQual": bsmt_qual,
+        "BsmtCond": "TA",
+        "BsmtExposure": "No",
+        "BsmtFinType1": "GLQ",
+        "BsmtFinSF1": total_bsmt_sf * 0.5,
+        "BsmtFinType2": "Unf",
+        "BsmtFinSF2": 0,
+        "BsmtUnfSF": total_bsmt_sf * 0.5,
+        "TotalBsmtSF": total_bsmt_sf,
+        "Heating": "GasA",
+        "HeatingQC": heating_qc,
+        "CentralAir": central_air,
+        "Electrical": "SBrkr",
+        "1stFlrSF": first_flr_sf,
+        "2ndFlrSF": second_flr_sf,
+        "LowQualFinSF": 0,
+        "GrLivArea": gr_liv_area,
+        "BsmtFullBath": 1,
+        "BsmtHalfBath": 0,
+        "FullBath": full_bath,
+        "HalfBath": half_bath,
+        "BedroomAbvGr": bedroom,
+        "KitchenAbvGr": 1,
+        "KitchenQual": kitchen_qual,
+        "TotRmsAbvGrd": tot_rms,
+        "Functional": "Typ",
+        "Fireplaces": fireplaces,
+        "FireplaceQu": fireplace_qu,
+        "GarageType": "Attchd",
+        "GarageYrBlt": year_built,
+        "GarageFinish": garage_finish,
+        "GarageCars": garage_cars,
+        "GarageArea": garage_area,
+        "GarageQual": garage_qual,
+        "GarageCond": "TA",
+        "PavedDrive": "Y",
+        "WoodDeckSF": wood_deck_sf,
+        "OpenPorchSF": open_porch_sf,
+        "EnclosedPorch": 0,
+        "3SsnPorch": 0,
+        "ScreenPorch": 0,
+        "PoolArea": 0,
+        "MiscVal": 0,
+        "MoSold": 6,
+        "YrSold": 2010,
+        "SaleType": sale_type,
+        "SaleCondition": sale_cond,
+    }
+
+    input_df = pd.DataFrame([input_data])
+    try:
+        input_processed = preprocess(input_df, train_columns=train_cols)
+        predicted_price = model.predict(input_processed)[0]
+
+        st.markdown("---")
+        st.success(f"### 🏷️ Estimated Sale Price: **${predicted_price:,.0f}**")
+
+        # Show a gauge-style bar
+        min_price, max_price = 50000, 800000
+        pct = min((predicted_price - min_price) / (max_price - min_price), 1.0)
+        st.progress(pct)
+        col_lo, col_mid, col_hi = st.columns(3)
+        col_lo.caption("$50,000")
+        col_mid.caption(f"◀ ${predicted_price:,.0f} ▶")
+        col_hi.caption("$800,000+")
+
+    except Exception as e:
+        st.error(f"❌ Prediction failed: {e}")
+
+st.markdown("---")
+
+# ── Performance charts (collapsible) ─────────────────────────────────────────
+with st.expander("📊 Model Performance Charts", expanded=False):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
     axes[0].scatter(y_test, preds, alpha=0.45, color="steelblue", s=30)
     lims = [min(y_test.min(), preds.min()), max(y_test.max(), preds.max())]
     axes[0].plot(lims, lims, "r--", lw=1.8, label="Perfect prediction")
-    axes[0].set_xlabel("Actual Sale Price ($)")
-    axes[0].set_ylabel("Predicted Sale Price ($)")
+    axes[0].set_xlabel("Actual ($)")
+    axes[0].set_ylabel("Predicted ($)")
     axes[0].set_title("Actual vs Predicted")
     axes[0].legend()
-
     residuals = np.array(y_test) - preds
     axes[1].hist(residuals, bins=40, color="steelblue", edgecolor="white", alpha=0.85)
     axes[1].axvline(0, color="red", linestyle="--", lw=1.8)
     axes[1].set_xlabel("Residual ($)")
     axes[1].set_ylabel("Count")
     axes[1].set_title("Residuals Distribution")
-
     fig.tight_layout()
     st.pyplot(fig)
     plt.close(fig)
 
-with tab2:
-    st.subheader("Top 20 Most Important Features")
+with st.expander("🔍 Top 20 Feature Importances", expanded=False):
     importances = pd.Series(model.feature_importances_, index=train_cols)
     top20 = importances.nlargest(20).sort_values()
-
     fig2, ax2 = plt.subplots(figsize=(10, 7))
     colors = plt.cm.Blues(np.linspace(0.4, 0.9, 20))
     top20.plot(kind="barh", ax=ax2, color=colors)
@@ -278,46 +303,29 @@ with tab2:
     st.pyplot(fig2)
     plt.close(fig2)
 
-with tab3:
-    st.subheader("Predict on New Data")
-    st.markdown("Upload a `test.csv` (without `SalePrice`) to generate predictions.")
+# ── Batch predictions ─────────────────────────────────────────────────────────
+with st.expander("📂 Batch Predict from CSV", expanded=False):
+    st.markdown("Upload a `test.csv` to generate predictions for multiple houses at once.")
     test_file = st.file_uploader("Test CSV", type="csv", key="test")
-
     if test_file:
-        test_df_raw = pd.read_csv(test_file)
-
-        # Validate test file
-        test_errors = validate_dataframe(test_df_raw, is_train=False)
-        if test_errors:
-            st.error("❌ Your test dataset has issues:")
-            for err in test_errors:
-                st.markdown(f"- {err}")
-            st.stop()
-
         try:
+            test_df_raw = pd.read_csv(test_file)
             id_col = test_df_raw["Id"] if "Id" in test_df_raw.columns else None
             test_df = test_df_raw.drop(columns=["SalePrice", "Id"], errors="ignore")
             test_processed = preprocess(test_df, train_columns=train_cols)
             test_preds = model.predict(test_processed)
-
             submission = pd.DataFrame({"SalePrice": test_preds})
             if id_col is not None:
                 submission.insert(0, "Id", id_col.values)
-
             st.success(f"✅ Predictions generated for {len(submission):,} rows.")
             st.dataframe(submission.head(20), use_container_width=True)
-
-            csv_bytes = submission.to_csv(index=False).encode()
-            st.download_button(
-                label="⬇️  Download submission.csv",
-                data=csv_bytes,
-                file_name="submission.csv",
-                mime="text/csv",
-            )
-        except Exception:
-            st.error("❌ Could not generate predictions. Make sure your test CSV is clean and matches the required columns.")
+            st.download_button("⬇️ Download submission.csv",
+                               submission.to_csv(index=False).encode(),
+                               "submission.csv", "text/csv")
+        except Exception as e:
+            st.error(f"❌ Could not process test file: {e}")
     else:
-        st.info("Upload a test CSV above to generate a submission file.")
+        st.info("Upload a test CSV above.")
 
 st.markdown("---")
 st.caption("Built with Streamlit · Random Forest Regressor · Kaggle House Prices dataset")
