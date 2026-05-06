@@ -112,8 +112,8 @@ with col_left:
         tot_rms     = st.slider("Total Rooms (above ground)", 2, 12, 7)
         garage_cars = st.slider("Garage Capacity (cars)", 0, 4, 2)
     with c6:
-        year_built = st.slider("Year Built", 1900, 2023, 1995)
-        year_remod = st.slider("Year Remodelled", 1900, 2023, 1995)
+        year_built = st.slider("Year Built", 1900, 2026, 1995)
+        year_remod = st.slider("Year Remodelled", 1900, 2026, 1995)
 
 # ── Live prediction ───────────────────────────────────────────────────────────
 input_data = pd.DataFrame([{
@@ -165,7 +165,7 @@ with col_right:
     factors = {
         "Overall Quality": overall_qual / 10,
         "Living Area":     min(gr_liv_area / 5000, 1),
-        "Year Built":      (year_built - 1900) / 123,
+        "Year Built":      (year_built - 1900) / 126,
         "Basement Size":   min(total_bsmt_sf / 3000, 1),
         "Garage":          garage_cars / 4,
     }
