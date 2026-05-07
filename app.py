@@ -32,19 +32,19 @@ def get_model():
 
     # Realistic price formula
     price = (
-        overall_qual  * 18000 +
-        gr_liv_area   * 55 +
-        total_bsmt_sf * 25 +
-        (year_built - 1900) * 400 +
-        garage_cars   * 8000 +
-        full_bath     * 6000 +
-        fireplaces    * 5000 +
-        lot_area      * 1.5 +
-        first_flr_sf  * 20 +
-        central_air   * 10000 +
+        overall_qual  * 35000 +
+        gr_liv_area   * 120 +
+        total_bsmt_sf * 40 +
+        (year_built - 1900) * 800 +
+        garage_cars   * 15000 +
+        full_bath     * 12000 +
+        fireplaces    * 10000 +
+        lot_area      * 3.0 +
+        first_flr_sf  * 40 +
+        central_air   * 20000 +
         neighborhood_score +
         np.random.normal(0, 15000, n)
-    ).clip(50000, 800000)
+    ).clip(40000, 1500000)
 
     X = pd.DataFrame({
         "OverallQual":  overall_qual,
@@ -151,13 +151,13 @@ with col_right:
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Price gauge
-    min_p, max_p = 50000, 800000
+    min_p, max_p = 50000, 1500000
     pct = min(max((predicted_price - min_p) / (max_p - min_p), 0), 1.0)
     st.progress(pct)
     g1, g2, g3 = st.columns(3)
     g1.caption("$50k")
     g2.caption(f"${predicted_price/1000:.0f}k")
-    g3.caption("$800k+")
+    g3.caption("$1.5M+")
 
     st.markdown("---")
     st.markdown("##### Key Drivers")
